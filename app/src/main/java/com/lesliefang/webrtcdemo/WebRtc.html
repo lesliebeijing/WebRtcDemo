@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>webrtc demo</title>
+</head>
+<body>
+
+	<div>webrtc demo</div>
+
+	<div>当前用户:bbbb 对端用户:aaaa </div>
+	<div><button onclick="makeCall()">拨打</button></div>	
+
+	<div>本地流 <video id="localVideo" autoplay playsinline controls="false" style="width: 100%;height: 280px;"/></div>
+
+	<div>远端流 <video id="remoteVideo" autoplay playsinline controls="false" style="width: 100%;height: 280px;"/></div>
+
+	<script>
+
+		// 官网 https://webrtc.org/getting-started/peer-connections
+	
+		const LOCAL_USER_ID = 'bbbb';
+		const RECEIVER_USER_ID = 'aaaa';
+	
+		var webSocket = new WebSocket('ws://192.168.0.112:5520/websocket');
+		webSocket.onerror = function(event) {
+			console.log('onerror');
+		};
+		webSocket.onopen = function(event) {
+			console.log("onopen");
+			// 注册自己到服务端
+			webSocket.send(JSON.stringify({
+				'event':'register',
+				'userId': LOCAL_USER_ID
+			}));
+		};
+		webSocket.onclose = function(event) {
+			console.log('websocket closed');
+		};
+		webSocket.onmessage = function(event) {
+			console.log('onmessage '+event.data);
+			// 回调
+			onReceiveSocketMessage(JSON.parse(event.data));
+		};
+
+		const configuration = {'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]}
+		var peerConnection = new RTCPeerConnection(configuration); // 全局 PeerConnection
+		// Listen for local ICE candidates on the local RTCPeerConnection
+		peerConnection.addEventListener('icecandidate', event => {
+			console.log('local trickle  '+event);
+			if (event.candidate) {
+				const trickle = {
+					event:'trickle',
+					sender:LOCAL_USER_ID,
+					receiver: RECEIVER_USER_ID,
+					candidate:{
+						sdpMid:event.candidate.sdpMid,
+						sdpMLineIndex:event.candidate.sdpMLineIndex,
+						sdp:event.candidate.candidate
+					}
+				};
+	
+				webSocket.send(JSON.stringify(trickle));
+				// 发送本地 ICE candidate 到远端
+				console.log('send local ice candidate to remote '+RECEIVER_USER_ID);
+			}
+		});
+		// Listen for connectionstatechange on the local RTCPeerConnection
+		peerConnection.addEventListener('connectionstatechange', event => {
+			if (peerConnection.connectionState === 'connected') {
+				// Peers connected!
+				console.log('p2p connected');
+			}
+		});
+	
+		// 处理 signaling 消息
+		async function onReceiveSocketMessage(message) {
+			if ('sdp'===message.event) {
+				if('offer'==message.type.toLowerCase()) {
+					// 收到 offer
+					console.log('收到 offer');
+					let offerSdp = {type:'offer', sdp: message.description};
+					peerConnection.setRemoteDescription(new RTCSessionDescription(offerSdp));
+					// 创建 answer
+					const answer = await peerConnection.createAnswer();
+					await peerConnection.setLocalDescription(answer);
+					console.log('create answer and setLocalDescription');
+					// 发送 answer 到对端
+					webSocket.send(JSON.stringify({
+						"event": "sdp",
+						"type": 'answer',
+						"description":answer.sdp,
+						"sender":LOCAL_USER_ID,
+						"receiver":message.sender
+					}));
+					console.log('send answer to remote '+message.receiver);
+				} else if ('answer'==message.type.toLowerCase()) {
+					// 收到 answer
+					console.log('收到 answer from '+message.sender);
+					let answerSdp = {type:'answer', sdp: message.description};
+					const remoteDesc = new RTCSessionDescription(answerSdp);
+					await peerConnection.setRemoteDescription(remoteDesc);
+					console.log('setRemoteDescription after reveiver answer');
+				}
+			} else if('trickle'===message.event) {
+				let candidate = message.candidate;
+				await peerConnection.addIceCandidate(new RTCIceCandidate({
+					sdpMid:candidate.sdpMid,
+					sdpMLineIndex:candidate.sdpMLineIndex,
+					candidate:candidate.candidate
+				}))
+				console.log('add remote candidate');
+			}
+		};
+
+		async function addStreams() {
+			try {
+				const localStream = await navigator.mediaDevices.getUserMedia({'video':true,'audio':true}); 
+				// 添加本地流
+				localStream.getTracks().forEach(track => {
+					peerConnection.addTrack(track, localStream);
+				});
+
+				const videoElement = document.querySelector('video#localVideo');
+				videoElement.srcObject = localStream;
+				console.log('Got MediaStream:', localStream);
+			} catch(error){
+				console.error('Error accessing media devices.', error);
+			}
+
+			const remoteStream = new MediaStream();
+			const remoteVideo = document.querySelector('video#remoteVideo');
+			remoteVideo.srcObject = remoteStream;
+			// 监听远程流
+			peerConnection.addEventListener('track', async (event) => {
+				remoteStream.addTrack(event.track, remoteStream);
+			});
+		}
+	
+		// 添加流
+		addStreams();
+
+		// 拨打
+		async function makeCall() {
+			// create offer
+			const offer = await peerConnection.createOffer();
+			console.log('create offer');
+			console.log(offer);
+			await peerConnection.setLocalDescription(offer);
+			console.log('set setLocalDescription offer');
+	
+			// 发送 offer 到对端
+			webSocket.send(JSON.stringify({
+				"event": "sdp",
+				"type": 'offer',
+				"description":offer.sdp,
+				"sender":LOCAL_USER_ID,
+				"receiver":RECEIVER_USER_ID
+			}));
+			console.log('send offer to remote '+RECEIVER_USER_ID);
+	
+		}	
+	
+	</script>
+
+</body>
+</html>

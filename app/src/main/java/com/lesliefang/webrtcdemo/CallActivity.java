@@ -59,8 +59,10 @@ public class CallActivity extends AppCompatActivity {
 
     EglBase.Context eglBaseContext;
 
-    final String LOCAL_USER_ID = "bbbb";
-    final String RECEIVER_USER_ID = "aaaa";
+    final String LOCAL_USER_ID = "aaaa";
+    final String RECEIVER_USER_ID = "bbbb";
+
+    final String WEBSOCKET_URL = "ws://192.168.0.112:5520/websocket";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -109,7 +111,7 @@ public class CallActivity extends AppCompatActivity {
 
         webSocketChannel = new WebSocketChannel();
         webSocketChannel.setWebSocketCallback(webSocketCallback);
-        webSocketChannel.connect("ws://192.168.0.101:5520/websocket");
+        webSocketChannel.connect(WEBSOCKET_URL);
 
         if (!EasyPermissions.hasPermissions(CallActivity.this, perms)) {
             EasyPermissions.requestPermissions(CallActivity.this, "需要相机和录音权限",
