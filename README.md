@@ -4,6 +4,8 @@
 
 ### CallActivity  实现了两个 android 手机 P2P 通信, 当然 android 跟网页 ， android 跟 webrtc 网关等都是一样的
 
+### VideoRoomActivity 实现多人网状P2P聊天 demo
+
 ### WebRtc.html 是网页版实现
 
 ### https://webrtc.googlesource.com/src/+/refs/heads/master/examples  
